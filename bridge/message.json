@@ -1,4 +1,7 @@
-{
-  "status": "ready",
-  "message": "This is a message for the Windows machine or Oracle AI to read."
-}
+[
+  {
+    "sender": "System",
+    "timestamp": "2023-10-27T12:00:00Z",
+    "content": "Chat initialized. Welcome to the project discussion channel."
+  }
+]

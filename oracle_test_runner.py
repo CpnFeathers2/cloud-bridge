@@ -85,7 +85,7 @@ def cleanup_old_screenshots():
 def run_maven_build():
     """
     Run Maven build using HeadlessBuilder
-    Returns: (success: bool, jar_path: str or None)
+    Returns: (success: bool, jar_path: str or None, error_msg: str or None)
     """
     log("🔨 Starting Maven build...")
     
@@ -101,8 +101,9 @@ def run_maven_build():
         
         if result.returncode != 0:
             log("❌ Build FAILED!")
-            log(f"Error: {result.stdout[-500:]}")
-            return False, None
+            error_msg = result.stdout[-2000:]
+            log(f"Error: {error_msg}")
+            return False, None, error_msg
         
         log("✅ Build SUCCESS!")
         
@@ -111,18 +112,18 @@ def run_maven_build():
         
         if not artifacts:
             log("⚠️ No JAR found in artifacts!")
-            return False, None
+            return False, None, "No JAR found in artifacts"
         
         # Get most recent
         jar_path = max(artifacts, key=lambda p: p.stat().st_mtime)
         
         log(f"📦 JAR located: {jar_path.name}")
         
-        return True, jar_path
+        return True, jar_path, None
         
     except Exception as e:
         log(f"❌ Build error: {e}")
-        return False, None
+        return False, None, str(e)
 
 # =============================================================================
 # TEST RUNNER
@@ -312,6 +313,44 @@ Be concise.
     
     log(f"✅ Analysis task sent to Windows")
 
+
+def request_build_analysis(test_id, error_log):
+    """
+    Send task to Windows to analyze build failure
+    """
+    log("\n🤖 REQUESTING AI ANALYSIS FOR BUILD FAILURE...")
+
+    task = {
+        'id': f'analyze_build_{test_id}',
+        'ai': 'gemini_3',
+        'prompt': f"""
+Analyze BUILD FAILURE for: {test_id}
+
+Error Log:
+{error_log}
+
+Review:
+1. Identify the compilation error or build issue.
+2. Suggest a fix for the code or configuration.
+
+Provide:
+- Status: BUILD_ERROR
+- Issue: <summary>
+- Fix: <suggestion>
+"""
+    }
+
+    tasks_dir = AI_BRIDGE_REPO / 'tasks'
+    tasks_dir.mkdir(parents=True, exist_ok=True)
+
+    task_file = tasks_dir / f'task_analyze_build_{test_id}.json'
+    with open(task_file, 'w') as f:
+        json.dump(task, f, indent=2)
+
+    git_push(f"Analysis request for build failure: {test_id}")
+
+    log(f"✅ Build analysis task sent to Windows")
+
 # =============================================================================
 # MAIN TEST ORCHESTRATOR
 # =============================================================================
@@ -332,10 +371,11 @@ def run_test_cycle(command):
     log("="*60)
     
     # Step 1: Build
-    success, jar_path = run_maven_build()
+    success, jar_path, error_msg = run_maven_build()
     
     if not success:
         log("❌ Build failed - aborting test")
+        request_build_analysis(test_id, error_msg)
         return
     
     # Step 2: Prepare
